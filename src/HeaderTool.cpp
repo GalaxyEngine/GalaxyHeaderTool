@@ -125,8 +125,8 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 #undef GENERATED_BODY
 #define GENERATED_BODY()\
 	public:\
-		virtual std::shared_ptr<IComponent> Clone() override {\
-			return std::make_shared<%s>(*dynamic_cast<%s*>(this));\
+		virtual void* Clone() override {\
+			return new %s(*this);\
 		}\
 		\
 		virtual const char* GetComponentName() const override {return "%s";}\
