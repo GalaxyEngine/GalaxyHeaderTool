@@ -13,7 +13,7 @@ class HeaderTool
 public:
 	void ParseFiles(const std::filesystem::path& path);
 
-	void SetGeneratedFolder(const std::filesystem::path& val) { m_generatedFolder = val; }
+	void SetGeneratedFolder(const std::filesystem::path& val) { m_generatedFolder = val; std::filesystem::create_directories(m_generatedFolder); }
 private:
 	void ParseHeaderFile(const std::filesystem::path& path);
 

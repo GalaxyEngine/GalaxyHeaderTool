@@ -36,7 +36,6 @@ void HeaderTool::ParseFiles(const std::filesystem::path& path)
 void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 {
 	const std::filesystem::path generatedPath = m_generatedFolder / (path.filename().stem().string() + ".generated.h");
-
 #ifndef DEBUG
 	if (std::filesystem::exists(generatedPath))
 	{
@@ -100,7 +99,7 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	// Regular expression to match PROPERTY(); followed by an optional class or struct keyword,
 	// then a variable declaration that may include pointers, references, namespace prefixes, and template types
 	// It also allows for optional default values after an equals sign.
-	std::regex propertyRegex(R"(PROPERTY\(\)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?)\s*[*&]?\s*(\w+)\s*(?:=\s*[^;]*)?;)");
+	std::regex propertyRegex(R"(PROPERTY\(\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?)\s*[*&]?\s*(\w+)\s*(?:=\s*[^;]*)?;)");
 	std::smatch match;
 
 	auto begin = std::sregex_iterator(classContent.begin(), classContent.end(), propertyRegex);
@@ -125,29 +124,31 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 #undef GENERATED_BODY
 #define GENERATED_BODY()\
 	public:\
-		virtual void* Clone() override {\
+		virtual void* Clone() {\
 			return new %s(*this);\
 		}\
 		\
-		virtual const char* GetComponentName() const override {return "%s";}\
+		virtual const char* GetClassName() const {return "%s";}\
 	private:\
 		typedef %s Super;
 #undef END_CLASS
 #define END_CLASS()\
 	EXPORT_FUNC void* Create_%s() {return new %s();}\
 )";
+	const char* className = properties.className.c_str();
 	std::string generatedContent = string_format(topContent, 
-		properties.className.c_str(), properties.className.c_str(), properties.className.c_str(), 
+		className, className, 
 		properties.baseClassName.c_str(),
-		properties.className.c_str(), properties.className.c_str());
-	
+		className, className);
+
 	for (const auto& property : properties.properties)
 	{
+		const char* propertyName = property.c_str();
 		const std::string content = R"(	EXPORT_FUNC inline void* Get_%s_%s(%s* object) {return &object->%s;}\
 	EXPORT_FUNC inline void Set_%s_%s(%s* object, void* value){ object->%s = *reinterpret_cast<decltype(object->%s)*>(value);}\
 )";
-		generatedContent += string_format(content, properties.className.c_str(), property.c_str(), properties.className.c_str(), property.c_str(),
-			properties.className.c_str(), property.c_str(), properties.className.c_str(), property.c_str(), property.c_str());
+		generatedContent += string_format(content, className, propertyName, className, propertyName,
+			className, propertyName, className, propertyName, propertyName);
 	}
 	generatedContent += "\n";
 	
