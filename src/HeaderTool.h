@@ -1,11 +1,17 @@
 #pragma once
 #include <filesystem>
 
+struct Property
+{
+	std::string type;
+	std::string name;
+};
+
 struct ClassProperties
 {
 	std::string baseClassName;
 	std::string className;
-	std::vector<std::string> properties;
+	std::vector<Property> properties;
 };
 
 class HeaderTool
@@ -22,6 +28,8 @@ private:
 	void ParseClassProperties(const std::string& classContent, ClassProperties& properties);
 
 	void CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& properties);
+
+	void CreateGenFile(const std::filesystem::path& path, const ClassProperties& properties);
 private:
 	std::filesystem::path m_generatedFolder;
 };

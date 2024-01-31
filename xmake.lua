@@ -11,4 +11,5 @@ target("HeaderTool")
 
     set_kind("binary")
     add_headerfiles("src/**h")
+    add_headerfiles("src/**inl")
     add_files("src/**.cpp")
