@@ -9,7 +9,7 @@
 #include <memory>
 #include <stdexcept>
 
-#include "Parser.h"
+#include <cpp_serializer/CppSerializer.h>
 
 template<typename ... Args>
 std::string string_format(const std::string& format, Args ... args)
@@ -59,8 +59,8 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 	std::string content((std::istreambuf_iterator<char>(file)),
 		std::istreambuf_iterator<char>());
 
-	std::regex beginClassRegex(R"(CLASS\(\)(?:\;|)\s)");
-	std::regex endClassRegex(R"(END_CLASS\(\)(?:\;|)(\s*))");
+	std::regex beginClassRegex(R"(CLASS\(\)(?:\;|)\sc)");
+	std::regex endClassRegex(R"(;\sEND_CLASS\(\)(?:\;|)(\s*))");
 
 	// Match iterators.
 	std::smatch beginMatch;
@@ -72,7 +72,7 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 
 	if (foundBegin && foundEnd) {
 		// Calculate the start and end positions for the substring.
-		auto contentStart = beginMatch[0].second;
+		auto contentStart = beginMatch[0].second - 3;
 		auto contentEnd = endMatch[0].first;
 
 		// Extract the content.
@@ -86,6 +86,11 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 
 	ParseClassHeader(content, classProperties);
 
+	if (classProperties.className.empty())
+	{
+		throw std::exception("Class name not found");
+	}
+
 	ParseClassProperties(content, classProperties);
 
 	CreateGeneratedFile(path, classProperties);
@@ -96,7 +101,7 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 void HeaderTool::ParseClassHeader(const std::string& classContent, ClassProperties& classProperties)
 {
 	// Regular expression to match class names with optional inheritance and an opening brace
-	std::regex classRegex(R"(\bclass\s+(\w+)\s*:\s*public\s+((?:\w+::)*\w+)\s*\{)");
+	std::regex classRegex(R"(\bclass\s+(\w+)\s*(|:\s*public\s+((?:\w+::)*\w+))\s*\{)");
 	std::smatch match;
 
 	// Iterate over all matches in the file content
@@ -188,18 +193,19 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 
 void HeaderTool::CreateGenFile(const std::filesystem::path& path, const ClassProperties& classProperties)
 {
+	using namespace CppSer;
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".gen");
 	Serializer serializer(fileName);
 
-	serializer << Pair::BEGIN_MAP << "Class";
-	serializer << Pair::KEY << "Class Name" << Pair::VALUE << classProperties.className;
-	serializer << Pair::KEY << "Property Size" << Pair::VALUE << classProperties.properties.size();
+	serializer << Pair::BeginMap << "Class";
+	serializer << Pair::Key << "Class Name" << Pair::Value << classProperties.className;
+	serializer << Pair::Key << "Property Size" << Pair::Value << classProperties.properties.size();
 	for (const auto& property : classProperties.properties)
 	{
-		serializer << Pair::BEGIN_MAP << "Property";
-		serializer << Pair::KEY << "Name" << Pair::VALUE << property.name;
-		serializer << Pair::KEY << "Type" << Pair::VALUE << property.type;
-		serializer << Pair::END_MAP << "Property";
+		serializer << Pair::BeginMap << "Property";
+		serializer << Pair::Key << "Name" << Pair::Value << property.name;
+		serializer << Pair::Key << "Type" << Pair::Value << property.type;
+		serializer << Pair::EndMap << "Property";
 	}
-	serializer << Pair::END_MAP << "Class";
+	serializer << Pair::EndMap << "Class";
 }
