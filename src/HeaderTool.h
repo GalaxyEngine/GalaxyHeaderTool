@@ -29,7 +29,7 @@ private:
 
 	void CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& properties);
 
-	void CreateGenFile(const std::filesystem::path& path, const ClassProperties& properties);
+	void CreateGenFile(const std::filesystem::path& path, const ClassProperties& properties) const;
 private:
 	std::filesystem::path m_generatedFolder;
 };

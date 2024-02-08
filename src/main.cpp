@@ -49,8 +49,8 @@ int main(int argc, char** argv)
 #else
 
 	HeaderTool headerTool;
-	headerTool.SetGeneratedFolder("D:/Code/Scripting/ExampleProject/Generate/Headers");
-	headerTool.ParseFiles("D:/Code/Scripting/ExampleProject");
+	headerTool.SetGeneratedFolder("D:/Code/Moteurs/ExampleProject/Generate/Headers");
+	headerTool.ParseFiles("D:/Code/Moteurs/ExampleProject");
 #endif
 	return 0;
 }

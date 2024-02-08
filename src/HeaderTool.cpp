@@ -59,8 +59,8 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 	std::string content((std::istreambuf_iterator<char>(file)),
 		std::istreambuf_iterator<char>());
 
-	std::regex beginClassRegex(R"(CLASS\(\)(?:\;|)\sc)");
-	std::regex endClassRegex(R"(;\sEND_CLASS\(\)(?:\;|)(\s*))");
+	std::regex beginClassRegex(R"(\bCLASS\(\)\s*)");
+	std::regex endClassRegex(R"(\bEND_CLASS\(\)\s*)");
 
 	// Match iterators.
 	std::smatch beginMatch;
@@ -101,7 +101,7 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 void HeaderTool::ParseClassHeader(const std::string& classContent, ClassProperties& classProperties)
 {
 	// Regular expression to match class names with optional inheritance and an opening brace
-	std::regex classRegex(R"(\bclass\s+(\w+)\s*(|:\s*public\s+((?:\w+::)*\w+))\s*\{)");
+	std::regex classRegex(R"(\bclass\s+(\w+)\s*(?:\s*:\s*(?:public)?\s+((?:\w+::)*\w+(?:<\w*>|)?))?\s*\{)");
 	std::smatch match;
 
 	// Iterate over all matches in the file content
@@ -131,14 +131,44 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	// Regular expression to match PROPERTY(); followed by an optional class or struct keyword,
 	// then a variable declaration that may include pointers, references, namespace prefixes, and template types
 	// It also allows for optional default values after an equals sign.
-	std::regex propertyRegex(R"(PROPERTY\(\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)");
+	// It will check also if commented
+	std::regex propertyRegex(
+		R"(PROPERTY\(\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)"
+	);
 	std::smatch match;
+
+	std::regex multiLineCommentsRegex(R"(/\*(?:[^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)");
+	std::sregex_iterator commentsBegin = std::sregex_iterator(classContent.begin(), classContent.end(), multiLineCommentsRegex);
+	std::sregex_iterator commentsEnd = std::sregex_iterator();
+
 
 	auto begin = std::sregex_iterator(classContent.begin(), classContent.end(), propertyRegex);
 	auto end = std::sregex_iterator();
 
+	std::vector<std::pair<size_t, size_t>> commentRanges;
+
+	for (std::sregex_iterator i = commentsBegin; i != commentsEnd; ++i) {
+		std::smatch matchComment = *i;
+		commentRanges.emplace_back(matchComment.position(), matchComment.position() + matchComment.length());
+	}
+
 	for (std::sregex_iterator i = begin; i != end; ++i) {
 		match = *i;
+
+		size_t matchStartPos = match.position();
+		bool isInComment = std::any_of(commentRanges.begin(), commentRanges.end(), [matchStartPos](const std::pair<size_t, size_t>& range) {
+			return matchStartPos >= range.first && matchStartPos < range.second;
+			});
+
+		if (isInComment)
+			continue; // Skip this PROPERTY() match as it's inside a multi-line comment
+
+		// Check if '//' precedes the match in the same line
+		auto line_start = classContent.rfind('\n', match.position()) + 1;
+		auto comment_pos = classContent.find("//", line_start);
+		if (!(comment_pos == std::string::npos || comment_pos > match.position()))
+			continue;
+
 		std::string typeName = match[1].str(); // Type of the variable, including namespace and template if any
 		std::string varName = match[2].str(); // Name of the variable
 		Property p = { typeName, varName };
@@ -151,8 +181,10 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".generated.h");
 	std::ofstream outputFile(fileName);
 
-	const std::string topContent = R"(#pragma once
-#include <memory>
+	bool hasParent = !classProperties.baseClassName.empty();
+	std::string topContent;
+	if (hasParent) {
+		topContent = R"(#pragma once
 #undef GENERATED_BODY
 #define GENERATED_BODY()\
 	public:\
@@ -160,16 +192,47 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 			return new %s(*this);\
 		}\
 		\
-		virtual const char* GetClassName() const {return "%s";}\
+		virtual const char* Internal_GetClassName() const {return "%s";}\
+		virtual std::set<const char*> Internal_GetClassNames() const\
+		{\
+			std::set<const char*> list = Super::Internal_GetClassNames(); \
+			list.insert(%s::Internal_GetClassName()); \
+			return list;\
+		}\
+	private:\
+		typedef %s Super;
+#undef END_CLASS
+#define END_CLASS()\
+	EXPORT_FUNC inline void* Internal_Create_%s() {return new %s();}\
+)";
+	}
+	else
+	{
+		topContent = R"(#pragma once
+#undef GENERATED_BODY
+#define GENERATED_BODY()\
+	public:\
+		virtual void* Clone() {\
+			return new %s(*this);\
+		}\
+		\
+		virtual const char* Internal_GetClassName() const {return "%s";}\
+		virtual std::set<const char*> Internal_GetClassNames() const\
+		{\
+			std::set<const char*> list; \
+			list.insert(%s::Internal_GetClassName());\
+			return list;\
+		}\
 	private:\
 		typedef %s Super;
 #undef END_CLASS
 #define END_CLASS()\
 	EXPORT_FUNC void* Internal_Create_%s() {return new %s();}\
 )";
+	}
 	const char* className = classProperties.className.c_str();
-	std::string generatedContent = string_format(topContent, 
-		className, className, 
+	std::string generatedContent = string_format(topContent,
+		className, className, className,
 		classProperties.baseClassName.c_str(),
 		className, className);
 
@@ -183,7 +246,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 			className, propertyName, className, propertyName, propertyName);
 	}
 	generatedContent += "\n";
-	
+
 	outputFile << generatedContent;
 
 	outputFile.close();
@@ -191,7 +254,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 	std::cout << "Generated file " << fileName << std::endl;
 }
 
-void HeaderTool::CreateGenFile(const std::filesystem::path& path, const ClassProperties& classProperties)
+void HeaderTool::CreateGenFile(const std::filesystem::path& path, const ClassProperties& classProperties) const
 {
 	using namespace CppSer;
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".gen");
