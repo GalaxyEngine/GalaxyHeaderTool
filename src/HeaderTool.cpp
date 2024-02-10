@@ -4,7 +4,6 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <format>
 
 #include <memory>
 #include <stdexcept>
@@ -88,10 +87,12 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 
 	if (classProperties.className.empty())
 	{
-		throw std::exception("Class name not found");
+		throw std::runtime_error("Class name not found");
 	}
 
 	ParseClassProperties(content, classProperties);
+
+	ParseClassMethods(content, classProperties);
 
 	CreateGeneratedFile(path, classProperties);
 
@@ -176,12 +177,60 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	}
 }
 
+void HeaderTool::ParseClassMethods(const std::string& classContent, ClassProperties& classProperties)
+{
+	// Regular expression to match PROPERTY(); followed by an optional class or struct keyword,
+// then a variable declaration that may include pointers, references, namespace prefixes, and template types
+// It also allows for optional default values after an equals sign.
+// It will check also if commented
+	std::regex propertyRegex(
+		R"(FUNCTION\(\)(?:\;|)\s*void\s*(\w*)\(\s*\))"
+	);
+	std::smatch match;
+
+	std::regex multiLineCommentsRegex(R"(/\*(?:[^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)");
+	std::sregex_iterator commentsBegin = std::sregex_iterator(classContent.begin(), classContent.end(), multiLineCommentsRegex);
+	std::sregex_iterator commentsEnd = std::sregex_iterator();
+
+
+	auto begin = std::sregex_iterator(classContent.begin(), classContent.end(), propertyRegex);
+	auto end = std::sregex_iterator();
+
+	std::vector<std::pair<size_t, size_t>> commentRanges;
+
+	for (std::sregex_iterator i = commentsBegin; i != commentsEnd; ++i) {
+		std::smatch matchComment = *i;
+		commentRanges.emplace_back(matchComment.position(), matchComment.position() + matchComment.length());
+	}
+
+	for (std::sregex_iterator i = begin; i != end; ++i) {
+		match = *i;
+
+		size_t matchStartPos = match.position();
+		bool isInComment = std::any_of(commentRanges.begin(), commentRanges.end(), [matchStartPos](const std::pair<size_t, size_t>& range) {
+			return matchStartPos >= range.first && matchStartPos < range.second;
+			});
+
+		if (isInComment)
+			continue; // Skip this PROPERTY() match as it's inside a multi-line comment
+
+		// Check if '//' precedes the match in the same line
+		auto line_start = classContent.rfind('\n', match.position()) + 1;
+		auto comment_pos = classContent.find("//", line_start);
+		if (!(comment_pos == std::string::npos || comment_pos > match.position()))
+			continue;
+
+		std::string methodName = match[1].str(); // Type of the variable, including namespace and template if any
+		classProperties.methods.push_back(methodName);
+	}
+}
+
 void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& classProperties)
 {
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".generated.h");
 	std::ofstream outputFile(fileName);
 
-	bool hasParent = !classProperties.baseClassName.empty();
+	bool hasParent = classProperties.baseClassName != classProperties.className;
 	std::string topContent;
 	if (hasParent) {
 		topContent = R"(#pragma once
@@ -245,6 +294,18 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 		generatedContent += string_format(content, className, propertyName, className, propertyName,
 			className, propertyName, className, propertyName, propertyName);
 	}
+
+	if (!classProperties.methods.empty()) {
+		generatedContent += "\t\\\n";
+
+		for (const auto& method : classProperties.methods)
+		{
+			const char* methodName = method.c_str();
+			const std::string content = R"(	EXPORT_FUNC inline void Internal_Call_%s_%s(%s* object) { object->%s();}\
+)";
+			generatedContent += string_format(content, className, methodName, className, methodName);
+		}
+	}
 	generatedContent += "\n";
 
 	outputFile << generatedContent;
@@ -269,6 +330,13 @@ void HeaderTool::CreateGenFile(const std::filesystem::path& path, const ClassPro
 		serializer << Pair::Key << "Name" << Pair::Value << property.name;
 		serializer << Pair::Key << "Type" << Pair::Value << property.type;
 		serializer << Pair::EndMap << "Property";
+	}
+	serializer << Pair::Key << "Method Size" << Pair::Value << classProperties.methods.size();
+	for (const auto& method : classProperties.methods)
+	{
+		serializer << Pair::BeginMap << "Method";
+		serializer << Pair::Key << "Name" << Pair::Value << method;
+		serializer << Pair::EndMap << "Method";
 	}
 	serializer << Pair::EndMap << "Class";
 }

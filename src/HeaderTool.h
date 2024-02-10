@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <vector>
 
 struct Property
 {
@@ -11,6 +12,7 @@ struct ClassProperties
 {
 	std::string baseClassName;
 	std::string className;
+	std::vector<std::string> methods;
 	std::vector<Property> properties;
 };
 
@@ -26,6 +28,8 @@ private:
 	void ParseClassHeader(const std::string& classContent, ClassProperties& properties);
 
 	void ParseClassProperties(const std::string& classContent, ClassProperties& properties);
+
+	void ParseClassMethods(const std::string& classContent, ClassProperties& properties);
 
 	void CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& properties);
 
