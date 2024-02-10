@@ -252,7 +252,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 		typedef %s Super;
 #undef END_CLASS
 #define END_CLASS()\
-	EXPORT_FUNC inline void* Internal_Create_%s() {return new %s();}\
+	EXPORT_FUNC void* Internal_Create_%s() {return new %s();}\
 )";
 	}
 	else
@@ -288,8 +288,8 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 	for (const auto& property : classProperties.properties)
 	{
 		const char* propertyName = property.name.c_str();
-		const std::string content = R"(	EXPORT_FUNC inline void* Internal_Get_%s_%s(%s* object) {return &object->%s;}\
-	EXPORT_FUNC inline void Internal_Set_%s_%s(%s* object, void* value){ object->%s = *reinterpret_cast<decltype(object->%s)*>(value);}\
+		const std::string content = R"(	EXPORT_FUNC void* Internal_Get_%s_%s(%s* object) {return &object->%s;}\
+	EXPORT_FUNC void Internal_Set_%s_%s(%s* object, void* value){ object->%s = *reinterpret_cast<decltype(object->%s)*>(value);}\
 )";
 		generatedContent += string_format(content, className, propertyName, className, propertyName,
 			className, propertyName, className, propertyName, propertyName);
@@ -301,7 +301,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 		for (const auto& method : classProperties.methods)
 		{
 			const char* methodName = method.c_str();
-			const std::string content = R"(	EXPORT_FUNC inline void Internal_Call_%s_%s(%s* object) { object->%s();}\
+			const std::string content = R"(	EXPORT_FUNC void Internal_Call_%s_%s(%s* object) { object->%s();}\
 )";
 			generatedContent += string_format(content, className, methodName, className, methodName);
 		}
