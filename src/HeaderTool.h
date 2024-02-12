@@ -10,10 +10,23 @@ struct Property
 
 struct ClassProperties
 {
+	size_t lineNumber;
 	std::string baseClassName;
 	std::string className;
 	std::vector<std::string> methods;
 	std::vector<Property> properties;
+};
+
+struct EnumProperties
+{
+	std::string name;
+	std::vector<std::string> values;
+};
+
+struct HeaderProperties
+{
+	std::vector<ClassProperties> classProperties;
+	std::vector<EnumProperties> enumProperties;
 };
 
 class HeaderTool
@@ -31,9 +44,11 @@ private:
 
 	void ParseClassMethods(const std::string& classContent, ClassProperties& properties);
 
-	void CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& properties);
+	void ParseEnum(const std::string& enumContent, EnumProperties& properties);
 
-	void CreateGenFile(const std::filesystem::path& path, const ClassProperties& properties) const;
+	void CreateGeneratedFile(const std::filesystem::path& path, const HeaderProperties& properties);
+
+	void CreateGenFile(const std::filesystem::path& path, const HeaderProperties& properties) const;
 private:
 	std::filesystem::path m_generatedFolder;
 };

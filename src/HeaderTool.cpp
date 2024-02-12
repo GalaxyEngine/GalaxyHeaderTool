@@ -54,49 +54,69 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 		std::cerr << "Failed to open file: " << path << std::endl;
 		return;
 	}
+	HeaderProperties headerProperties;
 
-	std::string content((std::istreambuf_iterator<char>(file)),
-		std::istreambuf_iterator<char>());
-
-	std::regex beginClassRegex(R"(\bCLASS\(\)\s*)");
+	std::string line;
+	size_t lineNumber = 0;
+	size_t currentLineNumber = 0;
+	bool inClassScope = false;
+	std::regex classRegex(R"(\bCLASS\(\)\s*)");
 	std::regex endClassRegex(R"(\bEND_CLASS\(\)\s*)");
-
-	// Match iterators.
-	std::smatch beginMatch;
-	std::smatch endMatch;
-
-	// Search for the beginning and end of the class.
-	bool foundBegin = std::regex_search(content, beginMatch, beginClassRegex);
-	bool foundEnd = std::regex_search(content, endMatch, endClassRegex);
-
-	if (foundBegin && foundEnd) {
-		// Calculate the start and end positions for the substring.
-		auto contentStart = beginMatch[0].second - 3;
-		auto contentEnd = endMatch[0].first;
-
-		// Extract the content.
-		content = std::string(contentStart, contentEnd);
-	}
-	else {
-		return;
-	}
-
-	ClassProperties classProperties;
-
-	ParseClassHeader(content, classProperties);
-
-	if (classProperties.className.empty())
+	std::regex generatedBodyRegex(R"(\bGENERATED_BODY\(\)\s*)");
+	std::string classContent;
+	while (std::getline(file, line))
 	{
-		throw std::runtime_error("Class name not found");
+		++lineNumber;
+
+		// Check if we are entering a class scope
+		if (std::regex_search(line, classRegex))
+		{
+			inClassScope = true;
+		}
+
+		if (inClassScope)
+		{
+			classContent += line;
+			classContent += '\n';
+		}
+
+		// Check if we are leaving a class scope
+		if (inClassScope && std::regex_search(line, endClassRegex))
+		{
+			ClassProperties classProperties;
+
+			std::cout << classContent << std::endl;
+
+			classProperties.lineNumber = currentLineNumber;
+
+			ParseClassHeader(classContent, classProperties);
+
+			if (classProperties.className.empty())
+			{
+				throw std::runtime_error("Class name not found");
+			}
+
+			ParseClassProperties(classContent, classProperties);
+
+			ParseClassMethods(classContent, classProperties);
+
+			headerProperties.classProperties.push_back(classProperties);
+
+			inClassScope = false;
+			classContent = "";
+		}
+
+		// Look for GENERATED_BODY within the class scope
+		if (inClassScope && std::regex_search(line, generatedBodyRegex))
+		{
+			currentLineNumber = lineNumber;
+			std::cout << "GENERATED_BODY() found in class at line: " << lineNumber << std::endl;
+		}
 	}
 
-	ParseClassProperties(content, classProperties);
+	CreateGeneratedFile(path, headerProperties);
 
-	ParseClassMethods(content, classProperties);
-
-	CreateGeneratedFile(path, classProperties);
-
-	CreateGenFile(path, classProperties);
+	CreateGenFile(path, headerProperties);
 }
 
 void HeaderTool::ParseClassHeader(const std::string& classContent, ClassProperties& classProperties)
@@ -225,17 +245,35 @@ void HeaderTool::ParseClassMethods(const std::string& classContent, ClassPropert
 	}
 }
 
-void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const ClassProperties& classProperties)
+void HeaderTool::ParseEnum(const std::string& enumContent, EnumProperties& properties)
+{
+
+}
+
+void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const HeaderProperties& properties)
 {
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".generated.h");
 	std::ofstream outputFile(fileName);
 
-	bool hasParent = classProperties.baseClassName != classProperties.className;
-	std::string topContent;
-	if (hasParent) {
-		topContent = R"(#pragma once
-#undef GENERATED_BODY
-#define GENERATED_BODY()\
+	std::string fileContent;
+	fileContent += "#pragma once\n";
+	std::string endFile = "#undef END_FILE\n#define END_FILE()\\\n";
+
+
+	auto path_define = path.generic_string();
+	std::replace(path_define.begin(), path_define.end(), '/', '_');
+	std::transform(path_define.begin(), path_define.end(), path_define.begin(), [](unsigned char c) {
+		if (std::isalnum(c))
+			return std::toupper(c);
+		return std::toupper('_');
+		});
+
+	for (const auto& classProperties : properties.classProperties)
+	{
+		bool hasParent = classProperties.baseClassName != classProperties.className;
+		std::string generatedBody;
+		if (hasParent) {
+			generatedBody = R"(#define %s_%d_GENERATED_BODY\
 	public:\
 		virtual void* Clone() {\
 			return new %s(*this);\
@@ -250,16 +288,11 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 		}\
 	private:\
 		typedef %s Super;
-#undef END_CLASS
-#define END_CLASS()\
-	EXPORT_FUNC void* Internal_Create_%s() {return new %s();}\
 )";
-	}
-	else
-	{
-		topContent = R"(#pragma once
-#undef GENERATED_BODY
-#define GENERATED_BODY()\
+		}
+		else
+		{
+			generatedBody = R"(#define %s_%d_GENERATED_BODY\
 	public:\
 		virtual void* Clone() {\
 			return new %s(*this);\
@@ -274,69 +307,78 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const Cl
 		}\
 	private:\
 		typedef %s Super;
-#undef END_CLASS
-#define END_CLASS()\
-	EXPORT_FUNC void* Internal_Create_%s() {return new %s();}\
 )";
-	}
-	const char* className = classProperties.className.c_str();
-	std::string generatedContent = string_format(topContent,
-		className, className, className,
-		classProperties.baseClassName.c_str(),
-		className, className);
+		}
+		const char* className = classProperties.className.c_str();
+		std::string generatedContent = string_format(generatedBody,
+			path_define.c_str(), classProperties.lineNumber,
+			className, className, className,
+			classProperties.baseClassName.c_str(),
+			className);
 
-	for (const auto& property : classProperties.properties)
-	{
-		const char* propertyName = property.name.c_str();
-		const std::string content = R"(	EXPORT_FUNC void* Internal_Get_%s_%s(%s* object) {return &object->%s;}\
+		endFile += string_format("\\\n\tEXPORT_FUNC void* Internal_Create_%s() {return new %s();}\\\n"
+			, className, className);
+
+		for (const auto& property : classProperties.properties)
+		{
+			const char* propertyName = property.name.c_str();
+			const std::string content = R"(	EXPORT_FUNC void* Internal_Get_%s_%s(%s* object) {return &object->%s;}\
 	EXPORT_FUNC void Internal_Set_%s_%s(%s* object, void* value){ object->%s = *reinterpret_cast<decltype(object->%s)*>(value);}\
 )";
-		generatedContent += string_format(content, className, propertyName, className, propertyName,
-			className, propertyName, className, propertyName, propertyName);
-	}
-
-	if (!classProperties.methods.empty()) {
-		generatedContent += "\t\\\n";
-
-		for (const auto& method : classProperties.methods)
-		{
-			const char* methodName = method.c_str();
-			const std::string content = R"(	EXPORT_FUNC void Internal_Call_%s_%s(%s* object) { object->%s();}\
-)";
-			generatedContent += string_format(content, className, methodName, className, methodName);
+			endFile += string_format(content, className, propertyName, className, propertyName,
+				className, propertyName, className, propertyName, propertyName);
 		}
-	}
-	generatedContent += "\n";
 
-	outputFile << generatedContent;
+		if (!classProperties.methods.empty()) {
+
+			for (const auto& method : classProperties.methods)
+			{
+				const char* methodName = method.c_str();
+				const std::string content = R"(	EXPORT_FUNC void Internal_Call_%s_%s(%s* object) { object->%s();}\
+)";
+				endFile += string_format(content, className, methodName, className, methodName);
+			}
+		}
+		generatedContent += "\n";
+		fileContent += generatedContent;
+	}
+	fileContent += endFile;
+
+	fileContent += "\n#undef CURRENT_FILE_ID\n#define CURRENT_FILE_ID ";
+
+	fileContent += path_define;
+
+	outputFile << fileContent;
 
 	outputFile.close();
 
 	std::cout << "Generated file " << fileName << std::endl;
 }
 
-void HeaderTool::CreateGenFile(const std::filesystem::path& path, const ClassProperties& classProperties) const
+void HeaderTool::CreateGenFile(const std::filesystem::path& path, const HeaderProperties& headerProperties) const
 {
 	using namespace CppSer;
 	const std::filesystem::path fileName = m_generatedFolder / (path.filename().stem().string() + ".gen");
 	Serializer serializer(fileName);
-
-	serializer << Pair::BeginMap << "Class";
-	serializer << Pair::Key << "Class Name" << Pair::Value << classProperties.className;
-	serializer << Pair::Key << "Property Size" << Pair::Value << classProperties.properties.size();
-	for (const auto& property : classProperties.properties)
+	for (const auto& classProperties : headerProperties.classProperties)
 	{
-		serializer << Pair::BeginMap << "Property";
-		serializer << Pair::Key << "Name" << Pair::Value << property.name;
-		serializer << Pair::Key << "Type" << Pair::Value << property.type;
-		serializer << Pair::EndMap << "Property";
+		serializer << Pair::BeginMap << "Class";
+		serializer << Pair::Key << "Class Name" << Pair::Value << classProperties.className;
+		serializer << Pair::Key << "Property Size" << Pair::Value << classProperties.properties.size();
+		for (const auto& property : classProperties.properties)
+		{
+			serializer << Pair::BeginMap << "Property";
+			serializer << Pair::Key << "Name" << Pair::Value << property.name;
+			serializer << Pair::Key << "Type" << Pair::Value << property.type;
+			serializer << Pair::EndMap << "Property";
+		}
+		serializer << Pair::Key << "Method Size" << Pair::Value << classProperties.methods.size();
+		for (const auto& method : classProperties.methods)
+		{
+			serializer << Pair::BeginMap << "Method";
+			serializer << Pair::Key << "Name" << Pair::Value << method;
+			serializer << Pair::EndMap << "Method";
+		}
+		serializer << Pair::EndMap << "Class";
 	}
-	serializer << Pair::Key << "Method Size" << Pair::Value << classProperties.methods.size();
-	for (const auto& method : classProperties.methods)
-	{
-		serializer << Pair::BeginMap << "Method";
-		serializer << Pair::Key << "Name" << Pair::Value << method;
-		serializer << Pair::EndMap << "Method";
-	}
-	serializer << Pair::EndMap << "Class";
 }
