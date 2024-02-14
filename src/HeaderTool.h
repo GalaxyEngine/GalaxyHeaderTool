@@ -4,6 +4,7 @@
 
 struct Property
 {
+	std::vector<std::string> arguments;
 	std::string type;
 	std::string name;
 };

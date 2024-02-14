@@ -154,7 +154,7 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	// It also allows for optional default values after an equals sign.
 	// It will check also if commented
 	std::regex propertyRegex(
-		R"(PROPERTY\(\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)"
+		R"(PROPERTY\(([^)]*)\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)"
 	);
 	std::smatch match;
 
@@ -189,10 +189,21 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 		auto comment_pos = classContent.find("//", line_start);
 		if (!(comment_pos == std::string::npos || comment_pos > match.position()))
 			continue;
+		Property p;
+		std::string arguments = match[1].str();
 
-		std::string typeName = match[1].str(); // Type of the variable, including namespace and template if any
-		std::string varName = match[2].str(); // Name of the variable
-		Property p = { typeName, varName };
+		std::istringstream iss(arguments);
+		std::string token;
+
+		while (std::getline(iss, token, ',')) {
+			// Trim whitespace if necessary
+			token.erase(0, token.find_first_not_of(' ')); // leading spaces
+			token.erase(token.find_last_not_of(' ') + 1); // trailing spaces
+			p.arguments.push_back(token);
+		}
+
+		p.type = match[2].str(); // Type of the variable, including namespace and template if any
+		p.name = match[3].str(); // Name of the variable
 		classProperties.properties.push_back(p);
 	}
 }
@@ -368,6 +379,11 @@ void HeaderTool::CreateGenFile(const std::filesystem::path& path, const HeaderPr
 		for (const auto& property : classProperties.properties)
 		{
 			serializer << Pair::BeginMap << "Property";
+			serializer << Pair::Key << "Argument Size" << Pair::Value << property.arguments.size();
+			for (size_t i = 0; i < property.arguments.size(); i++)
+			{
+				serializer << Pair::Key << "Argument " + std::to_string(i) << Pair::Value << property.arguments[i];
+			}
 			serializer << Pair::Key << "Name" << Pair::Value << property.name;
 			serializer << Pair::Key << "Type" << Pair::Value << property.type;
 			serializer << Pair::EndMap << "Property";
