@@ -58,10 +58,10 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 
 	std::string line;
 	size_t lineNumber = 0;
+	size_t bracketCount = 0;
 	size_t currentLineNumber = 0;
 	bool inClassScope = false;
 	std::regex classRegex(R"(\bCLASS\(\)\s*)");
-	std::regex endClassRegex(R"(\bEND_CLASS\(\)\s*)");
 	std::regex generatedBodyRegex(R"(\bGENERATED_BODY\(\)\s*)");
 	std::string classContent;
 	while (std::getline(file, line))
@@ -80,30 +80,38 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 			classContent += '\n';
 		}
 
-		// Check if we are leaving a class scope
-		if (inClassScope && std::regex_search(line, endClassRegex))
+		if (inClassScope && line.find('{') != std::string::npos)
 		{
-			ClassProperties classProperties;
+			bracketCount++;
+		}
+		if (inClassScope && line.find('}') != std::string::npos)
+		{
+			bracketCount--;
 
-			std::cout << classContent << std::endl;
-
-			classProperties.lineNumber = currentLineNumber;
-
-			ParseClassHeader(classContent, classProperties);
-
-			if (classProperties.className.empty())
+			if (bracketCount == 0)
 			{
-				throw std::runtime_error("Class name not found");
+				ClassProperties classProperties;
+
+				std::cout << classContent << std::endl;
+
+				classProperties.lineNumber = currentLineNumber;
+
+				ParseClassHeader(classContent, classProperties);
+
+				if (classProperties.className.empty())
+				{
+					throw std::runtime_error("Class name not found");
+				}
+
+				ParseClassProperties(classContent, classProperties);
+
+				ParseClassMethods(classContent, classProperties);
+
+				headerProperties.classProperties.push_back(classProperties);
+
+				inClassScope = false;
+				classContent = "";
 			}
-
-			ParseClassProperties(classContent, classProperties);
-
-			ParseClassMethods(classContent, classProperties);
-
-			headerProperties.classProperties.push_back(classProperties);
-
-			inClassScope = false;
-			classContent = "";
 		}
 
 		// Look for GENERATED_BODY within the class scope
@@ -161,7 +169,6 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	std::regex multiLineCommentsRegex(R"(/\*(?:[^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)");
 	std::sregex_iterator commentsBegin = std::sregex_iterator(classContent.begin(), classContent.end(), multiLineCommentsRegex);
 	std::sregex_iterator commentsEnd = std::sregex_iterator();
-
 
 	auto begin = std::sregex_iterator(classContent.begin(), classContent.end(), propertyRegex);
 	auto end = std::sregex_iterator();

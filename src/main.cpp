@@ -9,34 +9,7 @@ int main(int argc, char** argv)
 
 	//throw std::runtime_error("An error occurred!");
 #ifndef DEBUG
-	//TODO : Add ENUM, STRUCT, CLASS (to check if need to generate a file) defines
-
-	/* Enum e.g :
-	// File
-	ENUM()
-	enum EType
-	{
-		Float,
-		Int,
-		Double
-	};
-	
-	// Generated file
-	const char* Get_EType_String(int index)
-	{
-		switch (index)
-		{
-		case 0:
-			return "Float";
-		case 1:
-			return "Int";
-		case 2:
-			return "Double";
-		default:
-			return "Invalid";
-		}
-	}
-	*/
+	//TODO : Add ENUM, STRUCT, FUNCTION() argument 
 	if (argc <= 1) {
 		std::cerr << "Error: no argument" << std::endl;
 		return 1;
@@ -49,8 +22,8 @@ int main(int argc, char** argv)
 #else
 
 	HeaderTool headerTool;
-	headerTool.SetGeneratedFolder("D:/Code/Moteurs/ExampleProject/Generate/Headers");
-	headerTool.ParseFiles("D:/Code/Moteurs/ExampleProject");
+	headerTool.SetGeneratedFolder("D:/Code/Moteurs/GalaxyScript/example/ExampleProject/Generate/Headers");
+	headerTool.ParseFiles("D:/Code/Moteurs/GalaxyScript/example/ExampleProject");
 #endif
 	return 0;
 }
