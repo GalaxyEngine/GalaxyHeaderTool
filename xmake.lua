@@ -5,11 +5,10 @@ set_languages("c++20")
 
 -- Custom repo
 add_repositories("galaxy-repo https://github.com/GalaxyEngine/xmake-repo")
-
 -- Packages
 add_requires("cpp_serializer ~1.0")
 
-target("HeaderTool")
+target("GalaxyHeaderTool")
     set_kind("binary")
 
     if (is_mode("debug")) then
