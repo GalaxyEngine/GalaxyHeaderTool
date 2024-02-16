@@ -10,6 +10,12 @@
 
 #include <cpp_serializer/CppSerializer.h>
 
+#define MACRO_PROPERTY_NAME "PROPERTY"
+#define MACRO_FUNCTION_NAME "FUNCTION"
+#define MACRO_CLASS_NAME "CLASS"
+#define MACRO_GENERATED_BODY_NAME "GENERATED_BODY"
+#define MACRO_END_FILE_NAME "END_FILE"
+
 template<typename ... Args>
 std::string string_format(const std::string& format, Args ... args)
 {
@@ -61,8 +67,8 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 	size_t bracketCount = 0;
 	size_t currentLineNumber = 0;
 	bool inClassScope = false;
-	std::regex classRegex(R"(\bCLASS\(\)\s*)");
-	std::regex generatedBodyRegex(R"(\bGENERATED_BODY\(\)\s*)");
+	std::regex classRegex(R"(\b)" MACRO_CLASS_NAME R"(\(\)\s*)");
+	std::regex generatedBodyRegex(R"(\b)" MACRO_GENERATED_BODY_NAME R"(\(\)\s*)");
 	std::string classContent;
 	while (std::getline(file, line))
 	{
@@ -118,7 +124,7 @@ void HeaderTool::ParseHeaderFile(const std::filesystem::path& path)
 		if (inClassScope && std::regex_search(line, generatedBodyRegex))
 		{
 			currentLineNumber = lineNumber;
-			std::cout << "GENERATED_BODY() found in class at line: " << lineNumber << std::endl;
+			std::cout << MACRO_GENERATED_BODY_NAME"() found in class at line: " << lineNumber << std::endl;
 		}
 	}
 
@@ -162,7 +168,7 @@ void HeaderTool::ParseClassProperties(const std::string& classContent, ClassProp
 	// It also allows for optional default values after an equals sign.
 	// It will check also if commented
 	std::regex propertyRegex(
-		R"(PROPERTY\(([^)]*)\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)"
+		MACRO_PROPERTY_NAME R"(\(([^)]*)\)(?:\;|)\s*(?:class\s+|struct\s+)?((?:\w+::)*\w+(?:\s*<[^;<>]*(?:<(?:[^;<>]*)>)*[^;<>]*>)?\s*\*?)\s+(\w+)\s*(?:=\s*[^;]*)?;)"
 	);
 	std::smatch match;
 
@@ -222,7 +228,7 @@ void HeaderTool::ParseClassMethods(const std::string& classContent, ClassPropert
 // It also allows for optional default values after an equals sign.
 // It will check also if commented
 	std::regex propertyRegex(
-		R"(FUNCTION\(\)(?:\;|)\s*void\s*(\w*)\(\s*\))"
+		MACRO_FUNCTION_NAME R"(\(\)(?:\;|)\s*void\s*(\w*)\(\s*\))"
 	);
 	std::smatch match;
 
@@ -291,7 +297,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const He
 		bool hasParent = classProperties.baseClassName != classProperties.className;
 		std::string generatedBody;
 		if (hasParent) {
-			generatedBody = R"(#define %s_%d_GENERATED_BODY\
+			generatedBody = R"(#define %s_%d_)" MACRO_GENERATED_BODY_NAME R"(\
 	public:\
 		virtual void* Clone() {\
 			return new %s(*this);\
@@ -310,7 +316,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const He
 		}
 		else
 		{
-			generatedBody = R"(#define %s_%d_GENERATED_BODY\
+			generatedBody = R"(#define %s_%d_)" MACRO_GENERATED_BODY_NAME R"(\
 	public:\
 		virtual void* Clone() {\
 			return new %s(*this);\
