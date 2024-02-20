@@ -22,8 +22,8 @@ int main(int argc, char** argv)
 #else
 
 	HeaderTool headerTool;
-	headerTool.SetGeneratedFolder("D:/Code/Moteurs/GalaxyScript/example/ExampleProject/Generate/Headers");
-	headerTool.ParseFiles("D:/Code/Moteurs/GalaxyScript/example/ExampleProject");
+	headerTool.SetGeneratedFolder("D:/Code/Moteurs/Galaxy Projects/GalaxyProject/Generate/Headers");
+	headerTool.ParseFiles("D:/Code/Moteurs/Galaxy Projects/GalaxyProject");
 #endif
 	return 0;
 }

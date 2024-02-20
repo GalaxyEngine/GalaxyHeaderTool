@@ -299,15 +299,15 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const He
 		if (hasParent) {
 			generatedBody = R"(#define %s_%d_)" MACRO_GENERATED_BODY_NAME R"(\
 	public:\
-		virtual void* Clone() {\
-			return new %s(*this);\
+		inline virtual Shared<BaseComponent> Clone() override {\
+			return std::make_shared<%s>(*dynamic_cast<%s*>(this));\
 		}\
 		\
-		virtual const char* Internal_GetClassName() const {return "%s";}\
-		virtual std::set<const char*> Internal_GetClassNames() const\
+		virtual const char* GetComponentName() const {return "%s";}\
+		virtual std::set<const char*> GetComponentNames() const\
 		{\
-			std::set<const char*> list = Super::Internal_GetClassNames(); \
-			list.insert(%s::Internal_GetClassName()); \
+			std::set<const char*> list = Super::GetComponentNames(); \
+			list.insert(%s::GetComponentName()); \
 			return list;\
 		}\
 	private:\
@@ -318,8 +318,8 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const He
 		{
 			generatedBody = R"(#define %s_%d_)" MACRO_GENERATED_BODY_NAME R"(\
 	public:\
-		virtual void* Clone() {\
-			return new %s(*this);\
+		inline virtual Shared<BaseComponent> Clone() override {\
+			return std::make_shared<%s>(*dynamic_cast<%s*>(this));\
 		}\
 		\
 		virtual const char* Internal_GetClassName() const {return "%s";}\
@@ -336,7 +336,7 @@ void HeaderTool::CreateGeneratedFile(const std::filesystem::path& path, const He
 		const char* className = classProperties.className.c_str();
 		std::string generatedContent = string_format(generatedBody,
 			path_define.c_str(), classProperties.lineNumber,
-			className, className, className,
+			className, className, className, className,
 			classProperties.baseClassName.c_str(),
 			className);
 
