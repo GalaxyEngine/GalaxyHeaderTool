@@ -3,7 +3,7 @@ add_rules("plugin.vsxmake.autoupdate")
 
 -- Runtime mode configuration
 if is_plat("windows") then
-    set_runtimes((is_mode("debug") or is_mode("gamedbg")) and "MDd" or "MD")
+    set_runtimes(is_mode("debug") and "MDd" or "MD")
 end
 
 set_languages("c++20")
